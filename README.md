@@ -1,2 +1,2 @@
-# FindingCluelessPerson
-finding clueless person game vrchat
+# Timing Game
+timing game in vrchat
