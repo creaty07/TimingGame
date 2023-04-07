@@ -20,6 +20,8 @@ public class GameManager : UdonSharpBehaviour
     const string STATE_SUC = "suc";
     const string STATE_FAIL = "fail";
 
+    bool deserializing = false;
+
     [UdonSynced]
     private byte maxRound; // 최대 라운드
     [UdonSynced]
@@ -29,7 +31,7 @@ public class GameManager : UdonSharpBehaviour
     [UdonSynced]
     private int playerCnt;
     [UdonSynced]
-    private int nowNumber;
+    public int nowNumber;
     [UdonSynced]
     private int maxNumberCnt;
     [UdonSynced]
@@ -116,6 +118,22 @@ public class GameManager : UdonSharpBehaviour
             players = newPlayers;
         }
     }
+    public override void OnPreSerialization()
+    {
+
+    }
+
+    public override void OnDeserialization()
+    {
+        deserializing = true;
+
+        if (!Networking.IsOwner(gameObject))
+        {
+            //slider.value = syncedValue;
+        }
+
+        deserializing = false;
+    }
 
     public void PlayerGameJoinInteract()
     {
@@ -147,13 +165,36 @@ public class GameManager : UdonSharpBehaviour
         }
     }
 
+    public void PlayerGameSendNumberInteract()
+    {
+        int playerId = Networking.LocalPlayer.playerId;
+
+        for (int i = 0; i < players.Length; i++)
+        {
+            Player player = players[i].GetComponent<Player>();
+
+            if (player.GetPlayerId() == playerId)
+            {
+                player.SendNumber();
+            }
+        }
+    }
+
     public void PlayerGameJoin()
     {
+        VRCPlayerApi localPlayer = Networking.LocalPlayer;
+
         playerCnt++;
+
+        if (!Networking.IsOwner(gameObject) && !deserializing) Networking.SetOwner(localPlayer, gameObject);
     }
     public void PlayerGameLeft()
     {
+        VRCPlayerApi localPlayer = Networking.LocalPlayer;
+
         playerCnt--;
+
+        if (!Networking.IsOwner(gameObject) && !deserializing) Networking.SetOwner(localPlayer, gameObject);
     }
     public void GameStart()
     {
@@ -245,5 +286,46 @@ public class GameManager : UdonSharpBehaviour
         gameState = STATE_READY;
 
         Debug.Log($"GameStop Round {round}");
+    }
+
+    public void SendNumber()
+    {
+        if (gameState != STATE_RUN) return;
+
+        VRCPlayerApi localPlayer = Networking.LocalPlayer;
+
+        int playerId = localPlayer.playerId;
+
+        int number = 0;
+        Player roundPlayer = null;
+
+        for (int i = 0; i < playerCnt; i++)
+        {
+            roundPlayer = roundPlayers[i].GetComponent<Player>();
+
+            if(roundPlayer.GetPlayerId() == playerId)
+            {
+                number = roundPlayer.GetFirstNumber();
+                break;
+            }
+        }
+
+        if(number > 0)
+        {
+            if(nowNumber < number)
+            {
+                sendNumberCnt++;
+                nowNumber = number;
+                roundPlayer.RemoveFirstNumber();
+            }
+            else
+            {
+
+            }
+        }
+
+        Debug.Log($"NowNumber : {nowNumber}");
+
+        if (!Networking.IsOwner(gameObject) && !deserializing) Networking.SetOwner(localPlayer, gameObject);
     }
 }
