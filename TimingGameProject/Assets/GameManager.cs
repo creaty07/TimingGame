@@ -1,31 +1,249 @@
 ﻿
+using BestHTTP.SecureProtocol.Org.BouncyCastle.Crypto.Agreement.JPake;
 using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Media;
 using System.Security.Cryptography;
 using UdonSharp;
+using UnityEditor;
 using UnityEngine;
+using VRC.SDK3.Components;
 using VRC.SDKBase;
 using VRC.Udon;
 
 public class GameManager : UdonSharpBehaviour
 {
+    const string STATE_READY = "ready";
+    const string STATE_RUN = "run";
+    const string STATE_SUC = "suc";
+    const string STATE_FAIL = "fail";
+
     [UdonSynced]
     private byte maxRound; // 최대 라운드
     [UdonSynced]
     private byte round; // 게임 진행 라운드
     [UdonSynced]
-    private byte[] numbers; // 내 숫자 리스트
+    private string gameState; // 게임 진행 상태 ready, run, suc, fail
     [UdonSynced]
-    private GameState gameState; // 게임 진행 상태
+    private int playerCnt;
+    [UdonSynced]
+    private int nowNumber;
+    [UdonSynced]
+    private int maxNumberCnt;
+    [UdonSynced]
+    private int sendNumberCnt;
 
-    public GameRule rule;
+    private int numberMin;
+    private int numberMax;
 
+    public GameObject originalPlayerObj;
+
+    public GameObject[] players;
+    public GameObject[] roundPlayers;
     void Start()
     {
-
+        maxRound = 8;
+        round = 0;
+        gameState = STATE_READY;
+        playerCnt = 0;
+        numberMin = 1;
+        numberMax = 101;
+        nowNumber = 0;
+        sendNumberCnt = 0;
     }
-  
 
+    public override void OnPlayerJoined(VRCPlayerApi player)
+    {
+        base.OnPlayerJoined(player);
+
+        GameObject playerObj = Instantiate(originalPlayerObj);
+        Player playerComponent = playerObj.GetComponent<Player>();
+        playerComponent.localPlayer = player;
+        playerComponent.gameManager = this;
+
+        if (players == null) 
+        { 
+            players = new GameObject[1]; 
+        }
+        else
+        {
+            GameObject[] newPlayers = new GameObject[players.Length + 1];
+            players.CopyTo(newPlayers, 0);
+
+            players = newPlayers;
+        }
+
+        players[players.Length - 1] = playerObj;
+
+        Debug.Log($"PlayerJoin {player.playerId}!!");
+        Debug.Log($"PlayerCnt {players.Length}!!");
+    }
+
+    public override void OnPlayerLeft(VRCPlayerApi player)
+    {
+        base.OnPlayerLeft(player);
+
+        int leftPlayerId = player.playerId;
+
+        if(players.Length - 1 == 0)
+        {
+            Destroy(players[0]);
+
+            players = null;
+        }
+        else
+        {
+            GameObject[] newPlayers = new GameObject[players.Length - 1];
+
+            int playerIndex = 0;
+
+            for (int i = 0; i < players.Length; i++)
+            {
+                int playerId = players[i].GetComponent<Player>().GetPlayerId();
+
+                if (leftPlayerId == playerId)
+                {
+                    Destroy(players[i]);
+                }
+                else
+                {
+                    newPlayers[playerIndex++] = players[i];
+                }
+            }
+
+            players = newPlayers;
+        }
+    }
+
+    public void PlayerGameJoinInteract()
+    {
+        int playerId = Networking.LocalPlayer.playerId;
+
+        for (int i = 0; i < players.Length; i++)
+        {
+            Player player = players[i].GetComponent<Player>();
+
+            if (player.GetPlayerId() == playerId)
+            {
+                player.GameJoin();
+            }
+        }
+    }
+
+    public void PlayerGameLeftInteract()
+    {
+        int playerId = Networking.LocalPlayer.playerId;
+
+        for (int i = 0; i < players.Length; i++)
+        {
+            Player player = players[i].GetComponent<Player>();
+
+            if (player.GetPlayerId() == playerId)
+            {
+                player.GameLeft();
+            }
+        }
+    }
+
+    public void PlayerGameJoin()
+    {
+        playerCnt++;
+    }
+    public void PlayerGameLeft()
+    {
+        playerCnt--;
+    }
+    public void GameStart()
+    {
+        if (gameState != STATE_READY) return;
+
+        round = 0;
+        gameState = STATE_RUN;
+
+        roundPlayers = new GameObject[playerCnt];
+        int roundPlayerIndex = 0;
+
+        for (int i = 0; i < players.Length; i++)
+        {
+            Player roundPlayer = players[i].GetComponent<Player>();
+
+            if (roundPlayer.isVaildJoin)
+            {
+                roundPlayers[roundPlayerIndex++] = players[i];
+            }
+        }
+
+        Debug.Log($"GameStart RoundPlayerCnt : {roundPlayers.Length}!!");
+
+        NextRound();
+    }
+    private void NextRound()
+    {
+        round++;
+
+        if (round > maxRound || playerCnt == 0)
+        {
+            GameStop();
+            return;
+        }
+
+        nowNumber = 0;
+        sendNumberCnt = 0;
+        maxNumberCnt = round * playerCnt;
+
+        Debug.Log($"Round {round} Numbers : {maxNumberCnt}");
+
+        int[] roundNumbers = GetRoundNubmers(maxNumberCnt);
+
+        int roundNumberIndex = 0;
+        for (int i = 0; i < playerCnt; i++)
+        {
+            Player roundPlayer = roundPlayers[i].GetComponent<Player>();
+            int[] playerNumber = new int[round];
+
+            for(int j = 0; j < playerNumber.Length; j++)
+            {
+                playerNumber[j] = roundNumbers[roundNumberIndex++];
+            }
+
+            roundPlayer.SetNumbers(playerNumber);
+        }
+    }
+    private int[] GetRoundNubmers(int numberCnt)
+    {
+        int[] numbers = new int[numberCnt];
+
+        int numberIndex = 0;
+
+        while(numberIndex < numberCnt)
+        {
+            bool addNumber = true;
+            int inputNumber = UnityEngine.Random.Range(numberMin, numberMax);
+
+            foreach (int number in numbers)
+            {
+                if(number == inputNumber)
+                {
+                    addNumber = false;
+                    break;
+                }
+            }
+
+            if (addNumber)
+            {
+                numbers[numberIndex++] = inputNumber;
+                Debug.Log($"Add Number : {inputNumber}");
+            }
+        }
+
+        return numbers;
+    }
+    private void GameStop()
+    {
+        gameState = STATE_READY;
+
+        Debug.Log($"GameStop Round {round}");
+    }
 }
