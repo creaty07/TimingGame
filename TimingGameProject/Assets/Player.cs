@@ -1,5 +1,6 @@
 ﻿
 using System;
+using System.Text;
 using UdonSharp;
 using UnityEngine;
 using UnityEngine.Events;
@@ -10,14 +11,25 @@ public class Player : UdonSharpBehaviour
 {
     public UdonSharpBehaviour gameManager;
     public VRCPlayerApi localPlayer;
-    [UdonSynced]
-    public int[] numbers;
-    [UdonSynced]
-    public bool isVaildJoin;
+
+    [UdonSynced] public int[] numbers;
+    [UdonSynced] public bool isVaildJoin;
 
     void Start()
     {
         isVaildJoin = false;
+
+        if (Networking.IsOwner(this.gameObject))
+        {
+            RequestSerialization();
+        }
+
+        Debug.Log($"{GetPlayerId()} Player isVaildJoin {isVaildJoin}");
+    }
+
+    public override void OnDeserialization()
+    {
+        Debug.Log($"{GetPlayerId()} GameJoin Click {isVaildJoin}");
     }
 
     public int GetPlayerId()
@@ -25,18 +37,20 @@ public class Player : UdonSharpBehaviour
         return localPlayer.playerId;
     }
 
-    public void GameJoin()
+    public void GameJoinToggle()
     {
-        isVaildJoin = true;
-        Debug.Log($"{GetPlayerId()} GameJoin Click");
-        gameManager.SendCustomNetworkEvent(VRC.Udon.Common.Interfaces.NetworkEventTarget.All, "PlayerGameJoin");
+        if(!Networking.IsOwner(this.gameObject)) Networking.SetOwner(Networking.LocalPlayer, this.gameObject);
+
+        SendCustomNetworkEvent(VRC.Udon.Common.Interfaces.NetworkEventTarget.All, "IsVaildJoinChange");
     }
-    public void GameLeft()
+
+    public void IsVaildJoinChange()
     {
-        isVaildJoin = false;
-        Debug.Log($"{GetPlayerId()} GameLeft Click");
-        gameManager.SendCustomNetworkEvent(VRC.Udon.Common.Interfaces.NetworkEventTarget.All, "PlayerGameLeft");
+        isVaildJoin = !isVaildJoin;
+
+        Debug.Log($"{GetPlayerId()} GameJoin Click {isVaildJoin}");
     }
+
     public void SetNumbers(int[] numbers)
     {
         this.numbers = new int[numbers.Length];
@@ -88,6 +102,8 @@ public class Player : UdonSharpBehaviour
                 numbers = newNumbers;
             }
         }
+
+        SendCustomNetworkEvent(VRC.Udon.Common.Interfaces.NetworkEventTarget.All, "RemoveFirstNumber");
     }
 
     public int NumberLength()
@@ -95,5 +111,19 @@ public class Player : UdonSharpBehaviour
         if (numbers == null) return 0;
 
         return numbers.Length;
+    }
+
+    private string GetNumbersString()
+    {
+        if (numbers == null) return "";
+
+        string numberString = "";
+
+        for(int i = 0; i < numbers.Length; i++)
+        {
+            numberString += numbers[i].ToString();
+        }
+
+        return numberString;
     }
 }
