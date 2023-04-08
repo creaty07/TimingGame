@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using UdonSharp;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.UI;
 using VRC.SDK3.Components;
 using VRC.SDKBase;
 using VRC.Udon;
@@ -20,120 +21,68 @@ public class GameManager : UdonSharpBehaviour
 {
     const string STATE_READY = "ready";
     const string STATE_RUN = "run";
-    const string STATE_SUC = "suc";
-    const string STATE_FAIL = "fail";
 
     [UdonSynced] private byte maxRound; // 최대 라운드
     [UdonSynced] private byte round; // 게임 진행 라운드
     [UdonSynced] private string gameState; // 게임 진행 상태 ready, run, suc, fail
-    [UdonSynced] private int playerCnt;
-    [UdonSynced] public int nowNumber;
+    [UdonSynced] private int nowNumber;
     [UdonSynced] private int maxNumberCnt;
-    [UdonSynced] private int sendNumberCnt;
-
+    [UdonSynced] private int life;
+    [UdonSynced] private int maxLife;
     private int numberMin;
     private int numberMax;
 
     [UdonSynced] private int[] joinPlayers;
     [UdonSynced] private int[] playerNumbers;
+    [UdonSynced] private int[] playerNumbersCnt;
+    [UdonSynced] private bool playerSendNumber;
 
-    public GameObject originalPlayerObj;
-
-    public GameObject[] players;
-    public GameObject[] roundPlayers;
+    public Text textNowNumber;
+    public Text textMyLowNumber;
+    public Text textRoundAndLife;
     void Start()
     {
         maxRound = 8;
+        life = 0;
+        maxLife = 8;
         round = 0;
         gameState = STATE_READY;
-        playerCnt = 0;
         numberMin = 1;
         numberMax = 101;
         nowNumber = 0;
-        sendNumberCnt = 0;
         joinPlayers = new int[0];
         playerNumbers = new int[0];
+        playerNumbersCnt = new int[0];
+        playerSendNumber = false;
 
         if (Networking.IsOwner(this.gameObject))
         {
             RequestSerialization();
         }
     }
-
     public override void OnDeserialization()
     {
         base.OnDeserialization();
 
-        Debug.Log($"OnDeserialization joinPlayers : {joinPlayers.ToArrayString()}");
+        if(round > 0)
+        {
+            SetRoundText(round, life);
+            SetMyMinNumberText(GetMyMinNumber());
+        }
     }
-
     public override void OnPlayerJoined(VRCPlayerApi player)
     {
-        //GameObject playerObj = Instantiate(originalPlayerObj);
-        //Player playerComponent = playerObj.GetComponent<Player>();
-        //playerComponent.localPlayer = player;
-        //playerComponent.gameManager = this;
-        //
-        //if (players == null)
-        //{
-        //    players = new GameObject[1];
-        //}
-        //else
-        //{
-        //    GameObject[] newPlayers = new GameObject[players.Length + 1];
-        //    players.CopyTo(newPlayers, 0);
-        //
-        //    players = newPlayers;
-        //}
-        //
-        //players[players.Length - 1] = playerObj;
-        //
-        Debug.Log($"PlayerJoin {player.playerId}!!");
-        //Debug.Log($"PlayerCnt {players.Length}!!");
-    }
 
+    }
     public override void OnPlayerLeft(VRCPlayerApi player)
     {
-        //int leftPlayerId = player.playerId;
-        //
-        //if (players.Length - 1 == 0)
-        //{
-        //    Destroy(players[0]);
-        //
-        //    players = null;
-        //}
-        //else
-        //{
-        //    GameObject[] newPlayers = new GameObject[players.Length - 1];
-        //
-        //    int playerIndex = 0;
-        //
-        //    for (int i = 0; i < players.Length; i++)
-        //    {
-        //        int playerId = players[i].GetComponent<Player>().GetPlayerId();
-        //
-        //        if (leftPlayerId == playerId)
-        //        {
-        //            Destroy(players[i]);
-        //        }
-        //        else
-        //        {
-        //            newPlayers[playerIndex++] = players[i];
-        //        }
-        //    }
-        //
-        //    players = newPlayers;
-        //}
-        //
-        Debug.Log($"PlayerLeft {player.playerId}!!");
-        //Debug.Log($"PlayerCnt {players.Length}!!");
-    }
 
+    }
     public void PlayerGameJoinToggleInteract()
     {
-        VRCPlayerApi localPlayer = Networking.LocalPlayer;
+        SetOwner();
 
-        if (!Networking.IsOwner(this.gameObject)) Networking.SetOwner(localPlayer, this.gameObject);
+        VRCPlayerApi localPlayer = Networking.LocalPlayer;
 
         int playerId = localPlayer.playerId;
 
@@ -147,98 +96,143 @@ public class GameManager : UdonSharpBehaviour
         {
             joinPlayers = joinPlayers.RemoveItem(playerId);
         }
+        RequestSerialization();
+    }
+    public void PlayerSendNumberInteract()
+    {
+        if (gameState != STATE_RUN || playerSendNumber) return;
 
-        Debug.Log($"joinPlayers : {joinPlayers.ToArrayString()}");
+        SetOwner();
+
+        playerSendNumber = true;
+
+        RequestSerialization();
+
+        int playerId = Networking.LocalPlayer.playerId;
+
+        int playerIndex = joinPlayers.FindIndex(playerId);
+
+        int number = GetMyMinNumber();
+
+        if (playerNumbersCnt[playerIndex] > 0)
+        {
+            if (nowNumber < number)
+            {
+                SetNowNumber(number);
+                int numberIndex = playerNumbers.FindIndex(number);
+
+                playerNumbers[numberIndex] = 999;
+                playerNumbersCnt[playerIndex]--;
+
+                int lowNumberCnt = GetLowNumberCnt();
+
+                if (lowNumberCnt > 0) 
+                { 
+                    life--;
+                    SetRoundText(round, life);
+                }
+
+                SetMyMinNumberText(GetMyMinNumber());
+            }
+
+            if (life == 0)
+            {
+                GameStop();
+                return;
+            }
+            else if (CheckNextRound() == true)
+            {
+                NextRound();
+            }
+        }
+
+        playerSendNumber = false;
 
         RequestSerialization();
     }
 
-    public void PlayerGameSendNumberInteract()
+    private int GetLowNumberCnt()
     {
-        int playerId = Networking.LocalPlayer.playerId;
+        int lowNumberCnt = 0;
 
-        for (int i = 0; i < players.Length; i++)
+        for(int i = 0; i < joinPlayers.Length; i++)
         {
-            Player player = players[i].GetComponent<Player>();
+            int[] numbers = new int[round];
 
-            if (player.GetPlayerId() == playerId)
+            Array.Copy(playerNumbers, i * round, numbers, 0, numbers.Length);
+
+            for(int j = 0; j < numbers.Length; j++)
             {
-                player.SendNumber();
+                int number = numbers[j];
+                if (nowNumber > number)
+                {
+                    int numberIndex = playerNumbers.FindIndex(number);
+                    playerNumbers[numberIndex] = 999;
+                    playerNumbersCnt[i]--;
+                    lowNumberCnt++;
+                }
             }
         }
+
+        return lowNumberCnt;
     }
 
-    public void PlayerGameJoin()
+    private bool CheckNextRound()
     {
-        VRCPlayerApi localPlayer = Networking.LocalPlayer;
+        int playerNumberCnt = 0;
 
-        playerCnt++;
-    }
-    public void PlayerGameLeft()
-    {
-        VRCPlayerApi localPlayer = Networking.LocalPlayer;
+        for(int i = 0; i < playerNumbersCnt.Length; i++)
+        {
+            playerNumberCnt += playerNumbersCnt[i];
+        }
 
-        playerCnt--;
+        return playerNumberCnt == 0;
     }
+
     public void GameStart()
     {
-        if (gameState != STATE_READY) return;
+        if (gameState != STATE_READY || joinPlayers.Length <= 1) return;
 
-        VRCPlayerApi localPlayer = Networking.LocalPlayer;
+        SetOwner();
 
+        life = maxLife;
         round = 0;
         gameState = STATE_RUN;
+        playerSendNumber = false;
 
-        roundPlayers = new GameObject[playerCnt];
-        int roundPlayerIndex = 0;
+        playerNumbersCnt = new int[joinPlayers.Length];
 
-        for (int i = 0; i < players.Length; i++)
-        {
-            Player roundPlayer = players[i].GetComponent<Player>();
-
-            if (roundPlayer.isVaildJoin)
-            {
-                roundPlayers[roundPlayerIndex++] = players[i];
-            }
-        }
-
-        Debug.Log($"GameStart RoundPlayerCnt : {roundPlayers.Length}!!");
+        RequestSerialization();
 
         NextRound();
     }
     private void NextRound()
     {
-        round++;
+        SetOwner();
 
-        if (round > maxRound || playerCnt == 0)
+        round++;
+        SetRoundText(round, life);
+
+        if (round > maxRound || joinPlayers.Length == 0)
         {
             GameStop();
             return;
         }
 
-        VRCPlayerApi localPlayer = Networking.LocalPlayer;
-
-        nowNumber = 0;
-        sendNumberCnt = 0;
+        int playerCnt = joinPlayers.Length;
+        SetNowNumber(0);
         maxNumberCnt = round * playerCnt;
 
-        Debug.Log($"Round {round} Numbers : {maxNumberCnt}");
+        playerNumbers = GetRoundNubmers(maxNumberCnt);
 
-        int[] roundNumbers = GetRoundNubmers(maxNumberCnt);
-
-        int roundNumberIndex = 0;
         for (int i = 0; i < playerCnt; i++)
         {
-            Player roundPlayer = roundPlayers[i].GetComponent<Player>();
-            int[] playerNumber = new int[round];
-
-            for(int j = 0; j < playerNumber.Length; j++)
-            {
-                playerNumber[j] = roundNumbers[roundNumberIndex++];
-            }
-
-            roundPlayer.SetNumbers(playerNumber);
+            playerNumbersCnt[i] = round;
         }
+
+        SetMyMinNumberText(GetMyMinNumber());
+
+        RequestSerialization();
     }
     private int[] GetRoundNubmers(int numberCnt)
     {
@@ -263,7 +257,6 @@ public class GameManager : UdonSharpBehaviour
             if (addNumber)
             {
                 numbers[numberIndex++] = inputNumber;
-                Debug.Log($"Add Number : {inputNumber}");
             }
         }
 
@@ -271,47 +264,46 @@ public class GameManager : UdonSharpBehaviour
     }
     private void GameStop()
     {
+        SetOwner();
+
         gameState = STATE_READY;
 
-        Debug.Log($"GameStop Round {round}");
+        if (life == 0) textNowNumber.text = "Fail";
+        else textNowNumber.text = "Suc";
+
+        RequestSerialization();
+    }
+    void SetOwner()
+    {
+        if (!Networking.IsOwner(this.gameObject)) Networking.SetOwner(Networking.LocalPlayer, this.gameObject);
     }
 
-    public void SendNumber()
+    void SetNowNumber(int number)
     {
-        if (gameState != STATE_RUN) return;
+        nowNumber = number;
+        textNowNumber.text = number.ToString();
+    }
 
-        VRCPlayerApi localPlayer = Networking.LocalPlayer;
+    int GetMyMinNumber()
+    {
+        int playerId = Networking.LocalPlayer.playerId;
 
-        int playerId = localPlayer.playerId;
+        int playerIndex = joinPlayers.FindIndex(playerId);
 
-        int number = 0;
-        Player roundPlayer = null;
+        int[] numbers = new int[round];
 
-        for (int i = 0; i < playerCnt; i++)
-        {
-            roundPlayer = roundPlayers[i].GetComponent<Player>();
+        Array.Copy(playerNumbers, playerIndex * round, numbers, 0, numbers.Length);
 
-            if(roundPlayer.GetPlayerId() == playerId)
-            {
-                number = roundPlayer.GetFirstNumber();
-                break;
-            }
-        }
+        return numbers.GetMinInt();
+    }
 
-        if(number > 0)
-        {
-            if(nowNumber < number)
-            {
-                sendNumberCnt++;
-                nowNumber = number;
-                roundPlayer.RemoveFirstNumber();
-            }
-            else
-            {
+    void SetMyMinNumberText(int number)
+    {
+        textMyLowNumber.text = number < 999 ? number.ToString() : "X";
+    }
 
-            }
-        }
-
-        Debug.Log($"NowNumber : {nowNumber}");
+    void SetRoundText(int round, int life)
+    {
+        textRoundAndLife.text = $"Roud : {round}, Life : {life}";
     }
 }

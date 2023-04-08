@@ -109,4 +109,16 @@ public static class ArrayExtentions
 
         return value;
     }
+
+    public static int GetMinInt(this int[] array)
+    {
+        int min = int.MaxValue;
+
+        for(int i = 0; i < array.Length; i++)
+        {
+            if(min > array[i]) min = array[i];
+        }
+
+        return min;
+    }
 }
