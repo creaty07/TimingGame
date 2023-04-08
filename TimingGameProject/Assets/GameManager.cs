@@ -12,7 +12,10 @@ using UnityEngine;
 using VRC.SDK3.Components;
 using VRC.SDKBase;
 using VRC.Udon;
+using VRC.Udon.Common;
+using VRC.Udon.Serialization.OdinSerializer.Utilities;
 
+[UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
 public class GameManager : UdonSharpBehaviour
 {
     const string STATE_READY = "ready";
@@ -31,114 +34,123 @@ public class GameManager : UdonSharpBehaviour
     private int numberMin;
     private int numberMax;
 
+    [UdonSynced] private int[] joinPlayers;
+    [UdonSynced] private int[] playerNumbers;
+
     public GameObject originalPlayerObj;
 
     public GameObject[] players;
     public GameObject[] roundPlayers;
     void Start()
     {
+        maxRound = 8;
+        round = 0;
+        gameState = STATE_READY;
+        playerCnt = 0;
+        numberMin = 1;
+        numberMax = 101;
+        nowNumber = 0;
+        sendNumberCnt = 0;
+        joinPlayers = new int[0];
+        playerNumbers = new int[0];
+
         if (Networking.IsOwner(this.gameObject))
         {
-            maxRound = 8;
-            round = 0;
-            gameState = STATE_READY;
-            playerCnt = 0;
-            numberMin = 1;
-            numberMax = 101;
-            nowNumber = 0;
-            sendNumberCnt = 0;
-
             RequestSerialization();
         }
     }
 
-    private void FixedUpdate()
+    public override void OnDeserialization()
     {
-        Debug.Log($"nowNumber : {nowNumber}");
+        base.OnDeserialization();
+
+        Debug.Log($"OnDeserialization joinPlayers : {joinPlayers.ToArrayString()}");
     }
 
     public override void OnPlayerJoined(VRCPlayerApi player)
     {
-        GameObject playerObj = Instantiate(originalPlayerObj);
-        Player playerComponent = playerObj.GetComponent<Player>();
-        playerComponent.localPlayer = player;
-        playerComponent.gameManager = this;
-
-        if (players == null)
-        {
-            players = new GameObject[1];
-        }
-        else
-        {
-            GameObject[] newPlayers = new GameObject[players.Length + 1];
-            players.CopyTo(newPlayers, 0);
-
-            players = newPlayers;
-        }
-
-        players[players.Length - 1] = playerObj;
-
+        //GameObject playerObj = Instantiate(originalPlayerObj);
+        //Player playerComponent = playerObj.GetComponent<Player>();
+        //playerComponent.localPlayer = player;
+        //playerComponent.gameManager = this;
+        //
+        //if (players == null)
+        //{
+        //    players = new GameObject[1];
+        //}
+        //else
+        //{
+        //    GameObject[] newPlayers = new GameObject[players.Length + 1];
+        //    players.CopyTo(newPlayers, 0);
+        //
+        //    players = newPlayers;
+        //}
+        //
+        //players[players.Length - 1] = playerObj;
+        //
         Debug.Log($"PlayerJoin {player.playerId}!!");
-        Debug.Log($"PlayerCnt {players.Length}!!");
+        //Debug.Log($"PlayerCnt {players.Length}!!");
     }
 
     public override void OnPlayerLeft(VRCPlayerApi player)
     {
-        int leftPlayerId = player.playerId;
-
-        if (players.Length - 1 == 0)
-        {
-            Destroy(players[0]);
-
-            players = null;
-        }
-        else
-        {
-            GameObject[] newPlayers = new GameObject[players.Length - 1];
-
-            int playerIndex = 0;
-
-            for (int i = 0; i < players.Length; i++)
-            {
-                int playerId = players[i].GetComponent<Player>().GetPlayerId();
-
-                if (leftPlayerId == playerId)
-                {
-                    Destroy(players[i]);
-                }
-                else
-                {
-                    newPlayers[playerIndex++] = players[i];
-                }
-            }
-
-            players = newPlayers;
-        }
-
+        //int leftPlayerId = player.playerId;
+        //
+        //if (players.Length - 1 == 0)
+        //{
+        //    Destroy(players[0]);
+        //
+        //    players = null;
+        //}
+        //else
+        //{
+        //    GameObject[] newPlayers = new GameObject[players.Length - 1];
+        //
+        //    int playerIndex = 0;
+        //
+        //    for (int i = 0; i < players.Length; i++)
+        //    {
+        //        int playerId = players[i].GetComponent<Player>().GetPlayerId();
+        //
+        //        if (leftPlayerId == playerId)
+        //        {
+        //            Destroy(players[i]);
+        //        }
+        //        else
+        //        {
+        //            newPlayers[playerIndex++] = players[i];
+        //        }
+        //    }
+        //
+        //    players = newPlayers;
+        //}
+        //
         Debug.Log($"PlayerLeft {player.playerId}!!");
-        Debug.Log($"PlayerCnt {players.Length}!!");
+        //Debug.Log($"PlayerCnt {players.Length}!!");
     }
 
     public void PlayerGameJoinToggleInteract()
     {
-        if (!Networking.IsOwner(this.gameObject)) Networking.SetOwner(Networking.LocalPlayer, this.gameObject);
+        VRCPlayerApi localPlayer = Networking.LocalPlayer;
 
-        nowNumber++;
+        if (!Networking.IsOwner(this.gameObject)) Networking.SetOwner(localPlayer, this.gameObject);
+
+        int playerId = localPlayer.playerId;
+
+        bool exists = joinPlayers.Exists(playerId);
+
+        if (!exists)
+        {
+            joinPlayers = joinPlayers.AppendItem(playerId);
+        }
+        else
+        {
+            joinPlayers = joinPlayers.RemoveItem(playerId);
+        }
+
+        Debug.Log($"joinPlayers : {joinPlayers.ToArrayString()}");
 
         RequestSerialization();
-
-        //int playerId = Networking.LocalPlayer.playerId;
-        //
-        //for (int i = 0; i < players.Length; i++)
-        //{
-        //    Player player = players[i].GetComponent<Player>();
-        //
-        //    if (player.GetPlayerId() == playerId)
-        //    {
-        //        player.GameJoinToggle();
-        //        break;
-        //    }
-        //}
     }
 
     public void PlayerGameSendNumberInteract()

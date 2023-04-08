@@ -9,7 +9,7 @@ public class SyncSlider : UdonSharpBehaviour
 {
     [UdonSynced]
     private float syncedValue;
-    private float localValue;
+    //private float localValue;
     private bool deserializing;
     private VRCPlayerApi localPlayer;
     private Slider slider;
@@ -18,13 +18,13 @@ public class SyncSlider : UdonSharpBehaviour
     {
         slider = transform.GetComponent<Slider>();
         localPlayer = Networking.LocalPlayer;
-        syncedValue = localValue = slider.value;
+        syncedValue = slider.value;
         deserializing = false;
     }
 
     public override void OnPreSerialization()
     {
-        syncedValue = localValue;
+        //syncedValue = localValue;
     }
 
     public override void OnDeserialization()
@@ -43,6 +43,6 @@ public class SyncSlider : UdonSharpBehaviour
     {
         if (!Networking.IsOwner(gameObject) && !deserializing) Networking.SetOwner(localPlayer, gameObject);
 
-        localValue = syncedValue = slider.value;
+         syncedValue = slider.value;
     }
 }
