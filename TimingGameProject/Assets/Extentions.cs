@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-
 public static class ArrayExtentions
 {
     public static bool Exists<T>(this T[] array, T value) where T : struct
@@ -120,5 +116,23 @@ public static class ArrayExtentions
         }
 
         return min;
+    }
+
+    public static void SortArray(this int[] arr)
+    {
+        int temp;
+        for (int i = 0; i < arr.Length - 1; i++)
+        {
+            for (int j = 0; j < arr.Length - i - 1; j++)
+            {
+                if (arr[j] > arr[j + 1])
+                {
+                    // Swap elements if they are in the wrong order
+                    temp = arr[j];
+                    arr[j] = arr[j + 1];
+                    arr[j + 1] = temp;
+                }
+            }
+        }
     }
 }
