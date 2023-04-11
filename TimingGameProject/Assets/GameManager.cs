@@ -34,48 +34,57 @@ public class GameManager : UdonSharpBehaviour
     private int numberMax;
 
     [UdonSynced] private int[] joinPlayers;
+    [UdonSynced] private string[] joinPlayerNames;
     [UdonSynced] private int[] playerNumbers;
     [UdonSynced] private int[] playerNumbersCnt;
     [UdonSynced] private bool playerSendNumber;
 
-    [UdonSynced] private int totalPlayerHintCnt;
-    [UdonSynced] private int playerHintCnt;
-    [UdonSynced] private int useHintCnt;
-    [UdonSynced] private int totalHintTouchCnt;
-    [UdonSynced] private bool useHint;
-    [UdonSynced] private bool usingHintClick;
+    [UdonSynced] private int maxItemCnt;
+    [UdonSynced] private int itemCnt;
+    [UdonSynced] private int useItemCnt;
+    [UdonSynced] private int totalItemTouchCnt;
+    [UdonSynced] private bool useItem;
+    [UdonSynced] private bool usingItemClick;
 
+    public GameObject uiView;
     public Text textGameJoin;
     public Text textNowNumber;
     public Text textMyLowNumber;
     public Text textRoundAndLife;
+    public Text textItemCnt;
+    public Text textPlayerNumberCnt;
     public GameObject playerInteractBoard;
     public GameObject defaultCanvas;
-    public GameObject hintCanvas;
+    public GameObject itemCanvas;
     public GameObject headObj;
+    public Slider maxLifeSlider;
+    public Slider maxRoundSlider;
+    public Slider maxItemSlider;
     VRCPlayerApi localPlayer;
     void Start()
     {
-        maxRound = 8;
+        maxRound = 3;
         life = 0;
-        maxLife = 8;
+        maxLife = 3;
         round = 0;
         gameState = STATE_READY;
         numberMin = 1;
         numberMax = 101;
         nowNumber = 0;
         joinPlayers = new int[0];
+        joinPlayerNames = new string[0];
         playerNumbers = new int[0];
         playerNumbersCnt = new int[0];
         playerSendNumber = false;
-        totalPlayerHintCnt = 3;
-        playerHintCnt = 0;
-        useHintCnt = 0;
-        totalHintTouchCnt = 0;
-        useHint = false;
-        usingHintClick = false;
+        maxItemCnt = 0;
+        itemCnt = 0;
+        useItemCnt = 0;
+        totalItemTouchCnt = 0;
+        useItem = false;
+        usingItemClick = false;
         localPlayer = Networking.LocalPlayer;
         playerInteractBoard.SetActive(false);
+        uiView.SetActive(false);
 
         if (Networking.IsOwner(this.gameObject))
         {
@@ -107,9 +116,8 @@ public class GameManager : UdonSharpBehaviour
 
         if(round > 0)
         {
-            SetNowNumber(nowNumber);
-            SetRoundText(round, life);
-            SetMyMinNumberText(GetMyNumbers());
+            SetUi();
+
         }
     }
     // game rul
@@ -123,7 +131,7 @@ public class GameManager : UdonSharpBehaviour
         round = 0;
         gameState = STATE_RUN;
         playerSendNumber = false;
-        playerHintCnt = totalPlayerHintCnt;
+        itemCnt = maxItemCnt;
 
         playerNumbersCnt = new int[joinPlayers.Length];
 
@@ -135,9 +143,11 @@ public class GameManager : UdonSharpBehaviour
     }
     public void SetGameStartUi()
     {
+        uiView.SetActive(true);
         playerInteractBoard.SetActive(true);
         defaultCanvas.SetActive(true);
-        hintCanvas.SetActive(false);
+        itemCanvas.SetActive(false);
+        SetUi();
     }
     private void NextRound()
     {
@@ -164,7 +174,7 @@ public class GameManager : UdonSharpBehaviour
         }
 
         SetMyMinNumberText(GetMyNumbers());
-
+        SetTextPlayerNumberCnt();
         RequestSerialization();
     }
     private int[] GetRoundNubmers(int numberCnt)
@@ -207,11 +217,12 @@ public class GameManager : UdonSharpBehaviour
     }
     public void SetGameOverUi()
     {
-        if (life == 0) SetNowNumberText("Fail");
-        else SetNowNumberText("Suc");
+        if (life == 0) SetNowNumberText("실패");
+        else SetNowNumberText("성공");
         textRoundAndLife.text = "";
         textMyLowNumber.text = "";
         playerInteractBoard.SetActive(false);
+        uiView.SetActive(false);
     }
     // player interact
     public void PlayerGameJoinToggleInteract()
@@ -227,22 +238,20 @@ public class GameManager : UdonSharpBehaviour
         if (!exists)
         {
             joinPlayers = joinPlayers.AppendItem(playerId);
-            textGameJoin.text = "Game Left";
+            joinPlayerNames = joinPlayerNames.AppendItem(localPlayer.displayName);
+            textGameJoin.text = "게임 미참가";
         }
         else
         {
             joinPlayers = joinPlayers.RemoveItem(playerId);
-            textGameJoin.text = "Game Join";
+            joinPlayerNames = joinPlayerNames.RemoveItem(localPlayer.displayName);
+            textGameJoin.text = "가임 참가";
         }
         RequestSerialization();
     }
     public void PlayerSendNumberInteract()
     {
-        Debug.Log($"{gameState}, {playerSendNumber}, {useHint}");
-        Debug.Log($"PlayerNumber Cnt : {playerNumbersCnt.ToArrayString()}");
-        Debug.Log($"PlayerNumber : {playerNumbers.ToArrayString()}");
-
-        if (gameState != STATE_RUN || playerSendNumber || useHint) return;
+        if (gameState != STATE_RUN || playerSendNumber || useItem) return;
 
         SetOwner();
 
@@ -255,8 +264,6 @@ public class GameManager : UdonSharpBehaviour
         int playerIndex = joinPlayers.FindIndex(playerId);
 
         int number = GetMyMinNumber();
-
-        Debug.Log($"Palyer Number Cnt : {playerNumbersCnt[playerIndex]}");
 
         if (playerNumbersCnt[playerIndex] > 0)
         {
@@ -277,6 +284,7 @@ public class GameManager : UdonSharpBehaviour
                 }
 
                 SetMyMinNumberText(GetMyNumbers());
+                SetTextPlayerNumberCnt();
             }
 
             if (life == 0)
@@ -294,61 +302,61 @@ public class GameManager : UdonSharpBehaviour
 
         RequestSerialization();
     }
-    // hint
-    public void EnableHintInteract()
+    // Item
+    public void EnableItemInteract()
     {
-        if (playerHintCnt == 0) return;
+        if (itemCnt == 0) return;
 
         SetOwner();
 
-        useHint = true;
-        useHintCnt = 0;
-        totalHintTouchCnt = 0;
+        useItem = true;
+        useItemCnt = 0;
+        totalItemTouchCnt = 0;
 
         RequestSerialization();
 
-        SendCustomNetworkEvent(VRC.Udon.Common.Interfaces.NetworkEventTarget.All, "SetHintCanvas");
+        SendCustomNetworkEvent(VRC.Udon.Common.Interfaces.NetworkEventTarget.All, "SetItemCanvas");
     }
-    public void UseHintInteract()
+    public void UseItemInteract()
     {
-        if (usingHintClick) return;
+        if (usingItemClick) return;
 
         SetOwner();
         
-        usingHintClick = true;
+        usingItemClick = true;
 
         RequestSerialization();
 
-        useHintCnt++;
-        totalHintTouchCnt++;
+        useItemCnt++;
+        totalItemTouchCnt++;
 
-        usingHintClick = false;
+        usingItemClick = false;
 
-        CheckUseHint();
+        CheckUseItem();
     }
-    public void NotUseHintInteract()
+    public void NotUseItemInteract()
     {
-        if (usingHintClick) return;
+        if (usingItemClick) return;
 
         SetOwner();
 
-        usingHintClick = true;
+        usingItemClick = true;
 
         RequestSerialization();
 
-        totalHintTouchCnt++;
+        totalItemTouchCnt++;
 
-        usingHintClick = false;
+        usingItemClick = false;
 
-        CheckUseHint();
+        CheckUseItem();
     }
-    private void CheckUseHint()
+    private void CheckUseItem()
     {
-        if (totalHintTouchCnt == joinPlayers.Length)
+        if (totalItemTouchCnt == joinPlayers.Length)
         {
-            if (totalHintTouchCnt == useHintCnt)
+            if (totalItemTouchCnt == useItemCnt)
             {
-                playerHintCnt--;
+                itemCnt--;
                 for(int i = 0; i< joinPlayers.Length; i++)
                 {
                     int playerId = joinPlayers[i];
@@ -362,26 +370,31 @@ public class GameManager : UdonSharpBehaviour
                         playerNumbersCnt[i]--;
                     }
                 }
-
+                SetItemCntText();
                 SetMyMinNumberText(GetMyNumbers());
+                SetTextPlayerNumberCnt();
             }
 
-            useHint = false;
+            useItem = false;
         }
 
         RequestSerialization();
 
         SetDefaultCanvas();
     }
-    public void SetHintCanvas()
+    void SetItemCntText()
+    {
+        textItemCnt.text = $"남은 아이템 수 : {itemCnt}";
+    }
+    public void SetItemCanvas()
     {
         defaultCanvas.SetActive(false);
-        hintCanvas.SetActive(true);
+        itemCanvas.SetActive(true);
     }
     public void SetDefaultCanvas()
     {
         defaultCanvas.SetActive(true);
-        hintCanvas.SetActive(false);
+        itemCanvas.SetActive(false);
     }
     // utils
     // set
@@ -419,6 +432,44 @@ public class GameManager : UdonSharpBehaviour
     void SetRoundText(int round, int life)
     {
         textRoundAndLife.text = $"Roud : {round}, Life : {life}";
+    }
+    public void MaxLifeChanged()
+    {
+        SetOwner();
+        maxLife = (byte)maxLifeSlider.value;
+        RequestSerialization();
+    }
+    public void MaxRoundChanged()
+    {
+        SetOwner();
+        maxRound = (byte)maxRoundSlider.value;
+        RequestSerialization();
+    }
+    public void MaxItemChanged()
+    {
+        SetOwner();
+        maxItemCnt = (byte)maxItemSlider.value;
+        RequestSerialization();
+    }
+    public void SetTextPlayerNumberCnt()
+    {
+        string text = "";
+
+        for(int i = 0; i < joinPlayers.Length; i++)
+        {
+            if (text.Length > 0) text += "\n\n";
+            text += $"{joinPlayerNames[i]} : {playerNumbersCnt[i]}";
+        }
+
+        textPlayerNumberCnt.text = text;
+    }
+    public void SetUi()
+    {
+        SetNowNumber(nowNumber);
+        SetRoundText(round, life);
+        SetMyMinNumberText(GetMyNumbers());
+        SetItemCntText();
+        SetTextPlayerNumberCnt();
     }
     // get
     int GetMyMinNumber()

@@ -7,13 +7,15 @@ using VRC.Udon;
 
 public class SyncSlider : UdonSharpBehaviour
 {
-    [UdonSynced]
-    private float syncedValue;
+    [UdonSynced] private float syncedValue;
     //private float localValue;
     private bool deserializing;
     private VRCPlayerApi localPlayer;
     private Slider slider;
 
+    public UdonBehaviour gameManager;
+    public string eventName;
+    public Text textSliderValue;
     void Start()
     {
         slider = transform.GetComponent<Slider>();
@@ -24,7 +26,7 @@ public class SyncSlider : UdonSharpBehaviour
 
     public override void OnPreSerialization()
     {
-        //syncedValue = localValue;
+        syncedValue = slider.value;
     }
 
     public override void OnDeserialization()
@@ -34,6 +36,7 @@ public class SyncSlider : UdonSharpBehaviour
         if (!Networking.IsOwner(gameObject))
         {
             slider.value = syncedValue;
+            if (textSliderValue != null) textSliderValue.text = slider.value.ToString();
         }
 
         deserializing = false;  
@@ -44,5 +47,9 @@ public class SyncSlider : UdonSharpBehaviour
         if (!Networking.IsOwner(gameObject) && !deserializing) Networking.SetOwner(localPlayer, gameObject);
 
          syncedValue = slider.value;
+
+        if(textSliderValue != null) textSliderValue.text = slider.value.ToString();
+
+        gameManager.SendCustomEvent(eventName);
     }
 }
