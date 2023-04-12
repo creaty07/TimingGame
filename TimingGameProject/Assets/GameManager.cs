@@ -35,6 +35,7 @@ public class GameManager : UdonSharpBehaviour
 
     [UdonSynced] private int[] joinPlayers;
     [UdonSynced] private string[] joinPlayerNames;
+    [UdonSynced] private int[] joinPlayerFailCnt;
     [UdonSynced] private int[] playerNumbers;
     [UdonSynced] private int[] playerNumbersCnt;
     [UdonSynced] private bool playerSendNumber;
@@ -50,8 +51,10 @@ public class GameManager : UdonSharpBehaviour
     public Text textGameJoin;
     public Text textNowNumber;
     public Text textMyLowNumber;
-    public Text textRoundAndLife;
+    public Text textRound;
+    public Text textLife;
     public Text textItemCnt;
+    public Text textPlayerHint;
     public Text textPlayerNumberCnt;
     public GameObject playerInteractBoard;
     public GameObject defaultCanvas;
@@ -60,6 +63,9 @@ public class GameManager : UdonSharpBehaviour
     public Slider maxLifeSlider;
     public Slider maxRoundSlider;
     public Slider maxItemSlider;
+    public AudioClip[] audioClips; // suc, fail, win, lose
+    AudioSource audioSource; 
+
     VRCPlayerApi localPlayer;
     void Start()
     {
@@ -73,6 +79,7 @@ public class GameManager : UdonSharpBehaviour
         nowNumber = 0;
         joinPlayers = new int[0];
         joinPlayerNames = new string[0];
+        joinPlayerFailCnt = new int[0];
         playerNumbers = new int[0];
         playerNumbersCnt = new int[0];
         playerSendNumber = false;
@@ -85,6 +92,8 @@ public class GameManager : UdonSharpBehaviour
         localPlayer = Networking.LocalPlayer;
         playerInteractBoard.SetActive(false);
         uiView.SetActive(false);
+
+        audioSource = GetComponent<AudioSource>();
 
         if (Networking.IsOwner(this.gameObject))
         {
@@ -134,6 +143,7 @@ public class GameManager : UdonSharpBehaviour
         itemCnt = maxItemCnt;
 
         playerNumbersCnt = new int[joinPlayers.Length];
+        joinPlayerFailCnt = new int[joinPlayers.Length];
 
         RequestSerialization();
 
@@ -147,6 +157,7 @@ public class GameManager : UdonSharpBehaviour
         playerInteractBoard.SetActive(true);
         defaultCanvas.SetActive(true);
         itemCanvas.SetActive(false);
+        textPlayerHint.text = "플레이어 남은 숫자";
         SetUi();
     }
     private void NextRound()
@@ -158,6 +169,7 @@ public class GameManager : UdonSharpBehaviour
 
         if (round > maxRound || joinPlayers.Length == 0)
         {
+            round = maxRound;
             GameOver();
             return;
         }
@@ -217,12 +229,33 @@ public class GameManager : UdonSharpBehaviour
     }
     public void SetGameOverUi()
     {
-        if (life == 0) SetNowNumberText("실패");
-        else SetNowNumberText("성공");
-        textRoundAndLife.text = "";
+        if (life == 0) 
+        {
+            PlaySoundLose();
+            SetNowNumberText("실패"); 
+        }
+        else 
+        {
+            PlaySoundWin();
+            SetNowNumberText("성공"); 
+        }
+        textPlayerHint.text = "플레이어 틀린 횟수";
+        SetTextPlayerFailCnt();
         textMyLowNumber.text = "";
         playerInteractBoard.SetActive(false);
         uiView.SetActive(false);
+    }
+    private void SetTextPlayerFailCnt()
+    {
+        string text = "";
+
+        for (int i = 0; i < joinPlayers.Length; i++)
+        {
+            if (text.Length > 0) text += "\n\n";
+            text += $"{joinPlayerNames[i]} : {joinPlayerFailCnt[i]}";
+        }
+
+        textPlayerNumberCnt.text = text;
     }
     // player interact
     public void PlayerGameJoinToggleInteract()
@@ -280,6 +313,8 @@ public class GameManager : UdonSharpBehaviour
                 if (lowNumberCnt > 0) 
                 { 
                     life--;
+                    joinPlayerFailCnt[playerIndex]++;
+                    SendCustomNetworkEvent(VRC.Udon.Common.Interfaces.NetworkEventTarget.All, "PlaySoundFail");
                     SetRoundText(round, life);
                 }
 
@@ -294,6 +329,7 @@ public class GameManager : UdonSharpBehaviour
             }
             else if (CheckNextRound() == true)
             {
+                SendCustomNetworkEvent(VRC.Udon.Common.Interfaces.NetworkEventTarget.All, "PlaySoundSuc");
                 NextRound();
             }
         }
@@ -431,7 +467,8 @@ public class GameManager : UdonSharpBehaviour
     }
     void SetRoundText(int round, int life)
     {
-        textRoundAndLife.text = $"Roud : {round}, Life : {life}";
+        textRound.text = $"라운드 : {round}";
+        textLife.text = $"라이프 : {life}";
     }
     public void MaxLifeChanged()
     {
@@ -520,6 +557,44 @@ public class GameManager : UdonSharpBehaviour
         }
 
         return lowNumberCnt;
+    }
+    public void PlaySoundSuc()
+    {
+        PlaySound("suc");
+    }
+    public void PlaySoundFail()
+    {
+        PlaySound("fail");
+    }
+    public void PlaySoundWin()
+    {
+        PlaySound("win");
+    }
+    public void PlaySoundLose()
+    {
+        PlaySound("lose");
+    }
+    void PlaySound(string sound)
+    {
+        if (audioSource.isPlaying) audioSource.Stop();
+
+        switch (sound)
+        {
+            case "suc":
+                audioSource.clip = audioClips[0];
+                break;
+            case "fail":
+                audioSource.clip = audioClips[1];
+                break;
+            case "win":
+                audioSource.clip = audioClips[2];
+                break;
+            case "lose":
+                audioSource.clip = audioClips[3];
+                break;
+        }
+
+        audioSource.Play();
     }
     // check
     private bool CheckNextRound()
