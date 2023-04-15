@@ -55,7 +55,6 @@ public class GameManager : UdonSharpBehaviour
     public Text textLife;
     public Text textItemCnt;
     public Text textPlayerHint;
-    public Text textPlayerNumberCnt;
     public GameObject playerInteractBoard;
     public GameObject defaultCanvas;
     public GameObject itemCanvas;
@@ -64,7 +63,8 @@ public class GameManager : UdonSharpBehaviour
     public Slider maxRoundSlider;
     public Slider maxItemSlider;
     public AudioClip[] audioClips; // suc, fail, win, lose
-    AudioSource audioSource; 
+    AudioSource audioSource;
+    public GameObject[] playerBoardItems; 
 
     VRCPlayerApi localPlayer;
     void Start()
@@ -92,6 +92,7 @@ public class GameManager : UdonSharpBehaviour
         localPlayer = Networking.LocalPlayer;
         playerInteractBoard.SetActive(false);
         uiView.SetActive(false);
+        SetPlayerBoardItems();
 
         audioSource = GetComponent<AudioSource>();
 
@@ -126,7 +127,10 @@ public class GameManager : UdonSharpBehaviour
         if(round > 0)
         {
             SetUi();
-
+        }
+        else
+        {
+            SetPlayerBoardItems();
         }
     }
     // game rul
@@ -245,22 +249,12 @@ public class GameManager : UdonSharpBehaviour
         playerInteractBoard.SetActive(false);
         uiView.SetActive(false);
     }
-    private void SetTextPlayerFailCnt()
-    {
-        string text = "";
-
-        for (int i = 0; i < joinPlayers.Length; i++)
-        {
-            if (text.Length > 0) text += "\n\n";
-            text += $"{joinPlayerNames[i]} : {joinPlayerFailCnt[i]}";
-        }
-
-        textPlayerNumberCnt.text = text;
-    }
     // player interact
     public void PlayerGameJoinToggleInteract()
     {
         if (gameState != STATE_READY) return;
+
+        if (playerBoardItems.Length == joinPlayers.Length) return;
 
         SetOwner();
 
@@ -281,6 +275,8 @@ public class GameManager : UdonSharpBehaviour
             textGameJoin.text = "가임 참가";
         }
         RequestSerialization();
+
+        SetPlayerBoardItems();
     }
     public void PlayerSendNumberInteract()
     {
@@ -488,17 +484,42 @@ public class GameManager : UdonSharpBehaviour
         maxItemCnt = (byte)maxItemSlider.value;
         RequestSerialization();
     }
+    private void SetTextPlayerFailCnt()
+    {
+        for (int i = 0; i < joinPlayers.Length; i++)
+        {
+            PlayerBoardItem item = playerBoardItems[i].GetComponent<PlayerBoardItem>();
+
+            item.SetDataCnt(joinPlayerFailCnt[i]);
+        }
+    }
     public void SetTextPlayerNumberCnt()
     {
-        string text = "";
-
         for(int i = 0; i < joinPlayers.Length; i++)
         {
-            if (text.Length > 0) text += "\n\n";
-            text += $"{joinPlayerNames[i]} : {playerNumbersCnt[i]}";
-        }
+            PlayerBoardItem item = playerBoardItems[i].GetComponent<PlayerBoardItem>();
 
-        textPlayerNumberCnt.text = text;
+            item.SetDataCnt(playerNumbersCnt[i]);
+        }
+    }
+
+    private void SetPlayerBoardItems()
+    {
+        for (int i = 0; i < playerBoardItems.Length; i++)
+        {
+            if(joinPlayers.Length > i)
+            {
+                playerBoardItems[i].SetActive(true);
+
+                PlayerBoardItem item = playerBoardItems[i].GetComponent<PlayerBoardItem>();
+
+                item.SetPlayerName(joinPlayerNames[i]);
+            }
+            else
+            {
+                playerBoardItems[i].SetActive(false);
+            }
+        }
     }
     public void SetUi()
     {
@@ -507,6 +528,7 @@ public class GameManager : UdonSharpBehaviour
         SetMyMinNumberText(GetMyNumbers());
         SetItemCntText();
         SetTextPlayerNumberCnt();
+        SetPlayerBoardItems();
     }
     // get
     int GetMyMinNumber()
