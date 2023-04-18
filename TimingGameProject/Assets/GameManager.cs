@@ -103,7 +103,7 @@ public class GameManager : UdonSharpBehaviour
     }
     private void FixedUpdate()
     {
-        float distance = 1.5f;
+        float distance = 2f;
         var transform = playerInteractBoard.transform;
 
         var forward = localPlayer.GetRotation() * Vector3.forward;
@@ -111,11 +111,11 @@ public class GameManager : UdonSharpBehaviour
         Vector3 newPosition = localPlayer.GetPosition() + forward * distance;
 
         // 계산된 위치로 GameObject의 위치를 설정
-        transform.position = new Vector3(newPosition.x, newPosition.y + 0.65f, newPosition.z);
+        transform.position = new Vector3(newPosition.x, newPosition.y + 1.25f, newPosition.z);
 
-        var head = localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.Head);
+        var head = localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.Origin);
 
-        headObj.transform.position = head.position + forward * (distance + 0.5f);
+        headObj.transform.position = head.position + forward  * (distance + 1.5f);
         headObj.transform.rotation = head.rotation;
 
         transform.LookAt(headObj.transform);
@@ -161,7 +161,7 @@ public class GameManager : UdonSharpBehaviour
         playerInteractBoard.SetActive(true);
         defaultCanvas.SetActive(true);
         itemCanvas.SetActive(false);
-        textPlayerHint.text = "플레이어 남은 숫자";
+        textPlayerHint.text = "플레이어 남은 패";
         SetUi();
     }
     private void NextRound()
@@ -405,6 +405,12 @@ public class GameManager : UdonSharpBehaviour
                 SetItemCntText();
                 SetMyMinNumberText(GetMyNumbers());
                 SetTextPlayerNumberCnt();
+
+                if (CheckNextRound() == true)
+                {
+                    SendCustomNetworkEvent(VRC.Udon.Common.Interfaces.NetworkEventTarget.All, "PlaySoundSuc");
+                    NextRound();
+                }
             }
 
             useItem = false;
@@ -621,13 +627,19 @@ public class GameManager : UdonSharpBehaviour
     // check
     private bool CheckNextRound()
     {
+        int haveNumberPlayerCnt = 0;
         int playerNumberCnt = 0;
 
         for (int i = 0; i < playerNumbersCnt.Length; i++)
         {
             playerNumberCnt += playerNumbersCnt[i];
+
+            if(playerNumbersCnt[i] > 0)
+            {
+                haveNumberPlayerCnt++;
+            }
         }
 
-        return playerNumberCnt == 0;
+        return playerNumberCnt == 0 || haveNumberPlayerCnt == 1;
     }
 }
